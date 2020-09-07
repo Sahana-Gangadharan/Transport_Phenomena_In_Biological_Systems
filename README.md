@@ -1,5 +1,5 @@
-# Transport_Phenomena_In_Biological_Systems
-Course project - Modelling And Analysis Of Hyperalgesia Condition
+# Modelling And Analysis Of Hyperalgesia Condition
+Project done in the course - Transport Phenomena in Biological Systems, offered by Prof G K Suraish Kumar in the Independence (Fall) semester
 
 This project was done as a part of the CFA exercise that is mandated to understand the course concepts better.
 
