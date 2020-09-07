@@ -1,0 +1,173 @@
+load_file("nrngui.hoc")
+
+create soma, axon, POST
+
+celsius = 34 //Temperature - degree celsius
+
+sr_m = 25000
+ar_m = 30000
+postr_m = 30000
+ac_m=1
+sc_m=1.5
+pc_m=1
+sdiameter = 100
+adiameter = 5
+postdiam = 100
+sLength = 50
+aLength = 2500
+postLength = 50
+def_gnabar = 0.05
+def_gkbar = 0.06
+def_ghbar = 0.03
+
+dur = 1000
+stamp = 0.5
+
+forall {
+	Ra = 100
+}
+// Modelling soma of presynaptic neuron--------------------------------------------------------------------------
+
+soma{
+	diam=sdiameter
+	L=sLength
+	cm=sc_m
+	temp = celsius
+
+	soma insert pas
+	e_pas=-65
+	g_pas=1/sr_m
+
+	insert nas
+ 	ena = 50
+ 	gbar_nas = def_gnabar
+
+ 	insert kdr
+ 	ek = -90
+ 	gkdrbar_kdr = def_gkbar
+
+ 	insert hd
+ 	ghdbar_hd = def_ghbar
+
+}
+// Modelling axon of presynaptic neuron---------------------------------------------------------------------------
+axon{
+	diam=adiameter
+	L=aLength
+	cm=ac_m
+	nseg=int((L/(0.1*lambda_f(100))+0.9)/2)*2+1
+
+	insert pas
+ 	e_pas = -65
+ 	g_pas = 1/sr_m
+
+ 	insert nas
+ 	ena = 50
+ 	gbar_nas = def_gnabar
+
+ 	insert kdr
+ 	ek = -90
+ 	gkdrbar_kdr = def_gkbar
+
+ 	insert hd
+ 	ghdbar_hd = def_ghbar
+}
+
+POST {
+	diam = postdiam
+	L = postLength
+	cm = pc_m
+ 	v_init = -65
+ 	Ra = 100
+ 	nseg =int((L/(0.1*lambda_f(100))+0.9)/2)*2+1
+
+ 	insert pas
+ 	e_pas = -65
+ 	g_pas = 1/postr_m
+
+ 	insert nas
+ 	ena = 50
+ 	gbar_nas = def_gnabar
+
+ 	insert kdr
+ 	ek = -90
+ 	gkdrbar_kdr = def_gkbar
+}
+
+connect axon(0),soma(1)
+connect POST(0), axon(1)
+
+objectvar stim
+soma stim = new IClamp(0.5)
+
+stim.del = 500
+stim.dur = dur
+stim.amp = stamp
+
+
+proc update_clamp() {
+	stim.amp=stamp
+}
+
+proc update_scm() {
+	soma.cm = sc_m
+}
+
+proc update_acm() {
+	axon.cm = ac_m
+}
+
+proc update_srm() {
+	soma.g_pas = 1/sr_m
+}
+
+proc update_arm() {
+	axon.g_pas = 1/ar_m
+}
+
+proc update_gnabar(){
+	gbar_nas = def_gnabar
+}
+
+proc update_gkbar(){
+	gkdrbar_kdr = def_gkbar
+}
+
+proc update_ghbar(){
+	ghdbar_hd = def_ghbar
+}
+
+objectvar g[20]         // max 20 graphs
+ngraph = 0
+
+proc addgraph() { local ii  // define subroutine to add a new graph
+                // addgraph("variable", minvalue, maxvalue)
+    ngraph = ngraph+1
+    ii = ngraph-1
+    g[ii] = new Graph()
+    g[ii].size(0,tstop,$2,$3)
+    g[ii].xaxis()
+    g[ii].yaxis()
+    g[ii].addvar($s1,1,0)
+    g[ii].save_name("graphList[0].")
+    graphList[0].append(g[ii])
+}
+
+addgraph("soma.v(0.5)",-80,20)
+g[0].addexpr("axon.v(0.5)",2,1)
+g[0].addexpr("POST.v(0.5)",3,1)
+
+addgraph("soma.i_pas(0.5)",0,1)
+
+xpanel("Parameters")
+xvalue("Clamp Amplitude","stamp",1,"update_clamp()",1,1)
+xvalue("soma.cm","sc_m",1,"update_scm()",1,1)
+xvalue("axon.cm","ac_m",1,"update_acm()",1,1)
+xvalue("soma.rm","sr_m",1,"update_srm()",1,1)
+xvalue("axon.rm","ar_m",1,"update_arm()",1,1)
+xvalue("POST.gnabar","def_gnabar",1,"update_gnabar()",1,1)
+xvalue("POST.gkbar","def_gkbar",1,"update_gkbar()",1,1)
+xvalue("POST.ghbar","def_ghbar",1,"update_ghbar()",1,1)
+xpanel()
+
+nrncontrolmenu()

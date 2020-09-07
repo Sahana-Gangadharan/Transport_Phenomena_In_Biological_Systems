@@ -1,0 +1,251 @@
+load_file("nrngui.hoc")
+
+create soma, axon, PRE, POST
+
+// Variables for all compartments
+celsius = 34 //Temperature - degree celsius
+
+sr_m = 25000
+ar_m = 30000
+postr_m = 30000
+ac_m=1
+sc_m=1.5
+pc_m=1
+sdiameter = 100
+adiameter = 5
+prediam = 10
+postdiam = 100
+sLength = 50
+aLength = 2500
+preLength = 5
+postLength = 50
+def_gnabar = 0.05
+def_gkbar = 0.06
+dur = 1000
+stamp = 0.5
+
+forall {
+	Ra = 100
+}
+// Modelling soma of presynaptic neuron--------------------------------------------------------------------------
+
+soma{
+	diam=sdiameter
+	L=sLength
+	cm=sc_m
+	temp = celsius
+
+	soma insert pas
+	e_pas=-65
+	g_pas=1/sr_m
+}
+// Modelling axon of presynaptic neuron---------------------------------------------------------------------------
+axon{
+	diam=adiameter
+	L=aLength
+	cm=ac_m
+	nseg=int((L/(0.1*lambda_f(100))+0.9)/2)*2+1
+
+	insert pas
+	e_pas=-65
+	g_pas=1/ar_m
+}
+
+connect axon(0), soma(1)
+
+// Modelling terminal of presynaptic neuron------------------------------------------------------------------------
+PRE {
+	diam = prediam
+	L = preLength
+	cm = pc_m
+
+	insert cal
+	insert cad
+}
+
+connect PRE(0), axon(1)
+
+POST {
+	diam = postdiam
+	L = postLength
+	cm = pc_m
+ 	v_init = -65
+ 	Ra = 100
+ 	nseg =int((L/(0.1*lambda_f(100))+0.9)/2)*2+1
+
+ 	insert pas
+ 	e_pas = -65
+ 	g_pas = 1/postr_m
+
+ 	insert nas
+ 	ena = 50
+ 	gbar_nas = def_gnabar
+
+ 	insert kdr
+ 	ek = -90
+ 	gkdrbar_kdr = def_gkbar
+
+
+}
+
+// AMPA Synaptic receptors on the postsynaptic neuron --------------------------------------------------------
+objectvar syn
+POST syn = new newAMPA(0)
+
+syn.gmax      = 0.001 // (umho)       maximum conductance
+syn.tau		= 5
+syn.TRise		= 2  // Rise time
+syn.Erev		= 0  // Reversal
+//syn.Deadtime	= 1
+
+// Input Stimulus given to soma - varying CURRENT CLAMP-------------------------------------------------------
+objectvar stim
+soma stim = new IClamp(0.5)
+
+stim.del = 500
+stim.dur = dur
+stim.amp = stamp
+
+tstop = 2000
+
+proc update_clamp() {
+	stim.amp=stamp
+}
+
+proc update_scm() {
+	soma.cm = sc_m
+}
+
+proc update_acm() {
+	axon.cm = ac_m
+}
+
+proc update_srm() {
+	soma.g_pas = 1/sr_m
+}
+
+proc update_arm() {
+	axon.g_pas = 1/ar_m
+}
+
+proc update_gnabar(){
+	gbar_nas = def_gnabar
+}
+
+proc update_gkbar(){
+	gkdrbar_kdr = def_gkbar
+}
+
+// variable-a will store the total points plotted in the graph. This depends on Tstop and points_plotted_per_ms
+a = tstop*steps_per_ms
+b= dt
+
+//Poisson Spike generation in some time folks -------------------------------------------------------------------
+objref calcur, rand, syncur, postvol, spike, sumspike, r1, f1, f2, apc, stime
+
+calcur = new Vector(a+1)
+rand = new Vector(a+1)
+syncur = new Vector(a+1)
+postvol = new Vector(a+1)
+spike = new Vector(a+1) //All elements of x are set to 0 by default.
+sumspike = new Vector(a+1)
+stime = new Vector(a+1)
+
+f1 = new File()
+f2 = new File()
+r1 = new Random()
+
+POST apc = new APCount(0)
+thresh = -10 //for CA1 pyramidal neurons
+objref f56278
+
+wopen("Synaptic T conc.txt")
+
+proc poisson_spike() {
+
+	calcur.record(&PRE.ica(0.5))
+	syncur.record(&syn.i)	
+	postvol.record(&POST.v(0.5))
+	POST {
+		apc.record(stime)
+		apc.thresh=thresh
+		c = apc.n/(5)
+	}
+	finitialize(-65)
+	cnt =0
+	while (t<tstop) {
+		fadvance()
+
+		quanta_gen = -0.5*0.025*1.6612764e+009*calcur.x[cnt]
+		
+		for (j=0; j<10; j+=1) {
+			rand.x[cnt]=r1.uniform(0,1)
+
+			if(rand.x[cnt]<=quanta_gen) {
+				spike.x[cnt]=1
+			}
+			sumspike.x[cnt]=sumspike.x[cnt]+spike.x[cnt]
+		}
+
+		syn.C = sumspike.x[cnt]/10
+		fprint("syn.C=%f\n", syn.C)
+
+		cnt+=1
+	}
+
+}
+poisson_spike()
+
+f1.wopen("CalciumCurrent.txt")
+calcur.printf(f1,"%15.14f\n")
+f1.close()
+
+f1.wopen("Synaptic current.txt")
+syncur.printf(f1)
+f1.close()
+
+f1.wopen("Postsynaptic voltage.txt")
+postvol.printf(f1)
+f1.close()
+
+f1.wopen("PoissonSpike.txt")
+sumspike.printf(f1)
+f1.close()
+
+
+//Preparing for graphs in life --------------------------------------------------------------------------------
+objectvar g[20]         // max 20 graphs
+ngraph = 0
+
+proc addgraph() { local ii  // define subroutine to add a new graph
+                // addgraph("variable", minvalue, maxvalue)
+    ngraph = ngraph+1
+    ii = ngraph-1
+    g[ii] = new Graph()
+    g[ii].size(0,tstop,$2,$3)
+    g[ii].xaxis()
+    g[ii].yaxis()
+    g[ii].addvar($s1,1,0)
+    g[ii].save_name("graphList[0].")
+    graphList[0].append(g[ii])
+}
+
+addgraph("soma.v(0.5)",-80,20)
+g[0].addexpr("axon.v(0.5)",2,1)
+g[0].addexpr("PRE.v(0.5)",3,1)
+
+addgraph("soma.i_pas(0.5)",0,1)
+
+addgraph("PRE.ica(0.5)",-0.0001,0.0001)
+
+xpanel("Parameters")
+xvalue("Clamp Amplitude","stamp",1,"update_clamp()",1,1)
+xvalue("soma.cm","sc_m",1,"update_scm()",1,1)
+xvalue("axon.cm","ac_m",1,"update_acm()",1,1)
+xvalue("soma.rm","sr_m",1,"update_srm()",1,1)
+xvalue("axon.rm","ar_m",1,"update_arm()",1,1)
+xvalue("POST.gnabar","def_gnabar",1,"update_gnabar()",1,1)
+xvalue("POST.gkbar","def_gkbar",1,"update_gkbar()",1,1)
+xpanel()
+
+nrncontrolmenu()
